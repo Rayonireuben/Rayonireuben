@@ -1,0 +1,118 @@
+name: Build
+on:
+  push:
+  pull_request_target:
+    types: [labeled]
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[ci skip]') && !contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-java@v1
+        with:
+          java-version: 11
+      - uses: actions/cache@v2
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Ensure to use tagged version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: mvn versions:set --file ./pom.xml -DnewVersion=${GITHUB_REF##*/}
+      - name: Build
+        id: build
+        run: mvn -B clean package
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: jars
+          path: |
+            target/cracker-*.jar
+          if-no-files-found: error
+      - name: Upload artifacts
+        uses: svenstaro/upload-release-action@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          body: |
+            :construction: Work in Progress
+          prerelease: true
+          repo_token: ${{ secrets.CRYPTOBOT_RELEASE_TOKEN }} # release as "cryptobot"
+          file: target/cracker-*.jar
+          file_glob: true
+          tag: ${{ github.ref }}
+
+  native:
+    needs: build
+    name: Native
+    runs-on: ${{ matrix.os }}
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            gu-binary: gu
+            artifact_name: cracker
+            asset_name: cracker-linux
+          - os: macos-latest
+            gu-binary: gu
+            artifact_name: cracker
+            asset_name: cracker-mac
+          - os: windows-latest
+            gu-binary: gu.cmd
+            artifact_name: cracker.exe
+            asset_name: cracker-win.exe
+    steps:
+      - name: Setup Graalvm
+        id: setup-graalvm
+        uses: DeLaGuardo/setup-graalvm@master
+        with:
+          graalvm: '21.1.0'
+          java: 'java11'
+          arch: 'amd64'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: ${{ matrix.os == 'windows-latest' }}
+      - name: Install native-image component
+        run: |
+          ${{ matrix.gu-binary }} install native-image
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-graalvm-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-graalvm-
+            ${{ runner.os }}-maven-
+      - name: Ensure to use tagged version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: mvn versions:set --file ./pom.xml -DnewVersion=${GITHUB_REF##*/}
+      - name: Build
+        id: build
+        run: mvn -B clean package -Pgraalvm
+      - name: Upload artifacts
+        uses: svenstaro/upload-release-action@v2
+        with:
+          prerelease: true
+          repo_token: ${{ secrets.CRYPTOBOT_RELEASE_TOKEN }}
+          file: target/${{ matrix.artifact_name }}
+          asset_name: ${{ matrix.asset_name }}
+          tag: ${{ github.ref }}
+
+<!--
+**Rayonireuben/Rayonireuben** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+
+Here are some ideas to get you started:
+
+- 🔭 I’m currently working on ...
+- 🌱 I’m currently learning ...
+- 👯 I’m looking to collaborate on ...
+- 🤔 I’m looking for help with ...
+- 💬 Ask me about ...
+- 📫 How to reach me: ...
+- 😄 Pronouns: ...
+- ⚡ Fun fact: ...
+-->
